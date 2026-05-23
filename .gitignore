@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+downloads/
+*.osz
+
+.env
+.env.*
+
+.idea/
+.vscode/
+*.log
+*.zip
