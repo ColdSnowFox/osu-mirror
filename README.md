@@ -4,6 +4,7 @@
 
 兼容浏览器：Chrome、Edge。
 
+兼容系统：Windows。
 
 ## 依赖
 
@@ -18,7 +19,7 @@ python -m pip install -r requirements.txt
 
 ## 使用
 
-打开run.bat运行：
+打开 `run.bat` 运行：
 
 ```cmd
 run.bat
@@ -43,7 +44,11 @@ https://osu.sayobot.cn/?search={id}
 可编辑 `config.json` 中的 `search_template` 调整打开的搜索 URL 模板，使用 `{id}` 占位符代表谱面 ID。
 
 - `keep_original`: `true` 时在当前浏览器中新标签页打开 sayobot，并保留 osu 原页面；`false` 时直接在当前页面导航到 sayobot，替换 osu 页面。
-- `auto_download`: `true` 时自动在新标签页中打开谱面下载链接；`false` 时不自动下载。
+- `auto_download`: `true` 时自动在当前检测到的浏览器中新标签页打开谱面下载链接；`false` 时不自动下载。
+
+## 中文乱码
+
+如果在 CMD 中看到中文乱码，请使用 `run.bat` 启动。它会先执行 `chcp 65001`，并启用 Python UTF-8 模式。
 
 ## 开源协议
 

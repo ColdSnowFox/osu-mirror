@@ -44,12 +44,38 @@ def is_url(string: str) -> bool:
     return string.startswith(("http://", "https://"))
 
 
-def auto_download(set_id: str):
+def open_new_tab_in_source_browser(url: str, source_window=None) -> bool:
+    if not source_window:
+        return False
+
+    try:
+        source_window.set_focus()
+        source_window.type_keys("^t", set_foreground=False)
+        time.sleep(0.1)
+
+        edit = find_address_edit(source_window)
+        if edit is not None:
+            try:
+                edit.set_edit_text(url)
+                edit.type_keys("{ENTER}", set_foreground=False)
+                return True
+            except Exception:
+                pass
+
+        source_window.type_keys(url, with_spaces=True, set_foreground=False)
+        source_window.type_keys("{ENTER}", set_foreground=False)
+        return True
+    except Exception:
+        return False
+
+
+def auto_download(set_id: str, source_window=None):
     try:
         print(f"尝试自动下载谱面 {set_id}...")
         download_url = f"https://txy1.sayobot.cn/beatmaps/download/{set_id}"
         print(f"打开下载链接: {download_url}")
-        webbrowser.open_new_tab(download_url)
+        if not open_new_tab_in_source_browser(download_url, source_window):
+            webbrowser.open_new_tab(download_url)
         print("已打开下载链接，请在浏览器中确认下载。")
         return True
     except Exception as e:
@@ -65,6 +91,8 @@ def extract_set_id(url: str) -> str | None:
 def open_search(set_id: str, cfg: dict, source_window=None, source_edit=None):
     url = cfg["search_template"].format(id=set_id)
     if cfg.get("keep_original"):
+        if open_new_tab_in_source_browser(url, source_window):
+            return
         try:
             webbrowser.open_new_tab(url)
             return
@@ -190,7 +218,7 @@ def monitor_browser_url(loop_interval: float = 1.0):
 
                     if cfg.get("auto_download"):
                         print("尝试自动下载谱面...")
-                        auto_download(set_id)
+                        auto_download(set_id, source_window)
             time.sleep(loop_interval)
     except KeyboardInterrupt:
         print("已退出。")
