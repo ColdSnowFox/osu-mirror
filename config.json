@@ -1,5 +1,6 @@
 {
   "search_template": "https://osu.sayobot.cn/?search={id}",
   "keep_original": false,
-  "auto_download": false
+  "auto_download": true,
+  "download_mode": "novideo"
 }

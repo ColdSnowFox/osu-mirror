@@ -45,6 +45,7 @@ https://osu.sayobot.cn/?search={id}
 
 - `keep_original`: `true` 时在当前浏览器中新标签页打开 sayobot，并保留 osu 原页面；`false` 时直接在当前页面导航到 sayobot，替换 osu 页面。
 - `auto_download`: `true` 时自动在当前检测到的浏览器中新标签页打开谱面下载链接；`false` 时不自动下载。
+- `download_mode`: 自动下载时使用的 sayobot 下载类型。`full` 下载完整谱面，`novideo` 下载不含视频的谱面。
 
 ## 中文乱码
 

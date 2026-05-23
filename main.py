@@ -29,6 +29,7 @@ def load_config():
         "search_template": "https://osu.sayobot.cn/?search={id}",
         "keep_original": False,
         "auto_download": False,
+        "download_mode": "full",
     }
     if not os.path.exists(CONFIG_PATH):
         return default
@@ -69,10 +70,18 @@ def open_new_tab_in_source_browser(url: str, source_window=None) -> bool:
         return False
 
 
-def auto_download(set_id: str, source_window=None):
+def get_download_mode(cfg: dict) -> str:
+    mode = str(cfg.get("download_mode", "full")).lower().strip()
+    if mode == "novideo":
+        return "novideo"
+    return "full"
+
+
+def auto_download(set_id: str, cfg: dict, source_window=None):
     try:
-        print(f"尝试自动下载谱面 {set_id}...")
-        download_url = f"https://txy1.sayobot.cn/beatmaps/download/{set_id}"
+        mode = get_download_mode(cfg)
+        print(f"尝试自动下载谱面 {set_id} ({mode})...")
+        download_url = f"https://txy1.sayobot.cn/beatmaps/download/{mode}/{set_id}"
         print(f"打开下载链接: {download_url}")
         if not open_new_tab_in_source_browser(download_url, source_window):
             webbrowser.open_new_tab(download_url)
@@ -218,7 +227,7 @@ def monitor_browser_url(loop_interval: float = 1.0):
 
                     if cfg.get("auto_download"):
                         print("尝试自动下载谱面...")
-                        auto_download(set_id, source_window)
+                        auto_download(set_id, cfg, source_window)
             time.sleep(loop_interval)
     except KeyboardInterrupt:
         print("已退出。")
