@@ -13,3 +13,7 @@ downloads/
 .vscode/
 *.log
 *.zip
+
+build/
+dist/
+*.spec

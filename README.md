@@ -33,6 +33,16 @@ https://osu.ppy.sh/beatmapsets/12345#osu/67890
 
 然后让该浏览器窗口处于活动状态，脚本会自动读取地址栏，并打开 sayobot 搜索页面。
 
+## 打包为 exe
+
+如果要发给没有 Python 的用户，双击运行：
+
+```cmd
+build.bat
+```
+
+打包完成后，把 `dist` 文件夹里的 `osu-sayobot-helper.exe` 和 `config.json` 一起发给别人即可。
+
 默认搜索模板为：
 
 ```text
