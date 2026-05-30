@@ -19,7 +19,7 @@ python -m pip install -r requirements.txt
 
 ## 使用
 
-打开 `run.bat` 运行：
+打开 `run.bat` 运行图形界面：
 
 ```cmd
 run.bat
@@ -33,6 +33,14 @@ https://osu.ppy.sh/beatmapsets/12345#osu/67890
 
 然后让该浏览器窗口处于活动状态，脚本会自动读取地址栏，并打开 sayobot 搜索页面。
 
+界面使用白色、淡蓝色和黑色为主色，可以直接修改设置；修改后会实时自动保存到 `config.json`。运行日志可在“日志”页面查看。
+
+如果需要旧的命令行模式，可以运行：
+
+```cmd
+python main.py --cli
+```
+
 ## 打包为 exe
 
 如果要发给没有 Python 的用户，双击运行：
@@ -41,21 +49,21 @@ https://osu.ppy.sh/beatmapsets/12345#osu/67890
 build.bat
 ```
 
-打包完成后，把 `dist` 文件夹里的 `osu-sayobot-helper.exe` 和 `config.json` 一起发给别人即可。
-
-默认搜索模板为：
-
-```text
-https://osu.sayobot.cn/?search={id}
-```
+打包完成后，把 `dist` 文件夹里的 `osu-sayobot-helper.exe` 和 `config.json` 一起发给别人即可。打包后的 exe 默认不显示系统 CMD 窗口。
 
 ## 配置
 
-可编辑 `config.json` 中的 `search_template` 调整打开的搜索 URL 模板，使用 `{id}` 占位符代表谱面 ID。
+可直接在图形界面中调整配置，也可以编辑 `config.json`。
 
 - `keep_original`: `true` 时在当前浏览器中新标签页打开 sayobot，并保留 osu 原页面；`false` 时直接在当前页面导航到 sayobot，替换 osu 页面。
-- `auto_download`: `true` 时自动在当前检测到的浏览器中新标签页打开谱面下载链接；`false` 时不自动下载。
-- `download_mode`: 自动下载时使用的 sayobot 下载类型。`full` 下载完整谱面，`novideo` 下载不含视频的谱面。
+- `auto_download`: `true` 时检测到谱面后自动下载；`false` 时不自动下载。
+- `download_mode`: 自动下载时使用的 sayobot 下载类型。界面中显示为“完整谱面”或“无视频谱面”。
+- `download_method`: 界面中显示为“程序内下载”或“浏览器打开”。
+- `download_dir`: `download_method` 为 `direct` 时的保存目录，默认为 `downloads`。
+- `open_after_download`: `true` 时直接下载完成后自动打开 `.osz` 文件；`false` 时只保存文件。
+- `open_with`: 自动打开方式。界面中显示为“系统默认”、“osu! stable”或“osu! lazer”。
+- `stable_path`: osu! stable 启动器路径，留空时会自动检测常见安装位置并写回配置。
+- `lazer_path`: osu! lazer 启动器路径，留空时会自动检测常见安装位置并写回配置。
 
 ## 中文乱码
 

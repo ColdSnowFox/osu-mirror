@@ -51,7 +51,7 @@ if errorlevel 1 (
 )
 
 echo Building %APP_NAME%.exe ...
-%PYTHON_CMD% -m PyInstaller --onefile --name "%APP_NAME%" --clean main.py
+%PYTHON_CMD% -m PyInstaller --onefile --windowed --name "%APP_NAME%" --clean main.py
 if errorlevel 1 (
     echo Build failed.
     exit /b 1

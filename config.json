@@ -1,6 +1,11 @@
 {
-  "search_template": "https://osu.sayobot.cn/?search={id}",
   "keep_original": false,
   "auto_download": true,
-  "download_mode": "novideo"
+  "download_mode": "novideo",
+  "download_method": "direct",
+  "download_dir": "downloads",
+  "open_after_download": false,
+  "open_with": "default",
+  "stable_path": "",
+  "lazer_path": ""
 }
