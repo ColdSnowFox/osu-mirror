@@ -8,17 +8,36 @@ import subprocess
 import sys
 import threading
 import time
-import tkinter as tk
-from tkinter import filedialog, ttk
+import ctypes
+from ctypes import wintypes
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
 
 try:
-    import ctypes
+    from PySide6.QtCore import QRectF, QTimer, Qt
+    from PySide6.QtGui import QIcon, QPainterPath, QPixmap, QRegion, QTextCursor
+    from PySide6.QtWidgets import (
+        QApplication,
+        QButtonGroup,
+        QCheckBox,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMainWindow,
+        QPushButton,
+        QScrollArea,
+        QSizePolicy,
+        QStackedWidget,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
 except Exception:
-    ctypes = None
+    QApplication = None
 
 try:
     import winreg
@@ -31,6 +50,15 @@ except Exception:
     Desktop = None
 
 CONFIG_PATH = "config.json"
+
+
+def resource_path(*parts: str) -> str:
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, *parts)
+
+
+ICON_PATH = resource_path("assets", "app.ico")
+APP_ICON_IMAGE_PATH = resource_path("assets", "app-source.png")
 
 
 def setup_console_encoding():
@@ -188,6 +216,91 @@ def print_progress(downloaded: int, total: int, started_at: float, final: bool =
         text = f"\r{format_size(downloaded)} downloaded | {format_size(speed)}/s"
 
     print(text, end="\n" if final else "", flush=True)
+
+
+class BROWSEINFOW(ctypes.Structure):
+    _fields_ = [
+        ("hwndOwner", wintypes.HWND),
+        ("pidlRoot", ctypes.c_void_p),
+        ("pszDisplayName", ctypes.c_void_p),
+        ("lpszTitle", wintypes.LPCWSTR),
+        ("ulFlags", wintypes.UINT),
+        ("lpfn", ctypes.c_void_p),
+        ("lParam", wintypes.LPARAM),
+        ("iImage", ctypes.c_int),
+    ]
+
+
+class OPENFILENAMEW(ctypes.Structure):
+    _fields_ = [
+        ("lStructSize", wintypes.DWORD),
+        ("hwndOwner", wintypes.HWND),
+        ("hInstance", wintypes.HINSTANCE),
+        ("lpstrFilter", wintypes.LPCWSTR),
+        ("lpstrCustomFilter", wintypes.LPWSTR),
+        ("nMaxCustFilter", wintypes.DWORD),
+        ("nFilterIndex", wintypes.DWORD),
+        ("lpstrFile", ctypes.c_void_p),
+        ("nMaxFile", wintypes.DWORD),
+        ("lpstrFileTitle", ctypes.c_void_p),
+        ("nMaxFileTitle", wintypes.DWORD),
+        ("lpstrInitialDir", wintypes.LPCWSTR),
+        ("lpstrTitle", wintypes.LPCWSTR),
+        ("Flags", wintypes.DWORD),
+        ("nFileOffset", wintypes.WORD),
+        ("nFileExtension", wintypes.WORD),
+        ("lpstrDefExt", wintypes.LPCWSTR),
+        ("lCustData", wintypes.LPARAM),
+        ("lpfnHook", ctypes.c_void_p),
+        ("lpTemplateName", wintypes.LPCWSTR),
+        ("pvReserved", ctypes.c_void_p),
+        ("dwReserved", wintypes.DWORD),
+        ("FlagsEx", wintypes.DWORD),
+    ]
+
+
+def choose_folder_windows(title: str, initial_dir: str = "") -> str:
+    display_name = ctypes.create_unicode_buffer(260)
+    path_buffer = ctypes.create_unicode_buffer(32768)
+    flags = 0x00000001 | 0x00000040 | 0x00000010
+    browse_info = BROWSEINFOW(
+        None,
+        None,
+        ctypes.cast(display_name, ctypes.c_void_p),
+        title,
+        flags,
+        None,
+        0,
+        0,
+    )
+    pidl = ctypes.windll.shell32.SHBrowseForFolderW(ctypes.byref(browse_info))
+    if not pidl:
+        return ""
+    try:
+        if ctypes.windll.shell32.SHGetPathFromIDListW(pidl, path_buffer):
+            return path_buffer.value
+        return ""
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(pidl)
+
+
+def choose_file_windows(title: str, initial_dir: str = "") -> str:
+    file_buffer = ctypes.create_unicode_buffer(32768)
+    filters = "Executable (*.exe)\0*.exe\0All files (*.*)\0*.*\0\0"
+    flags = 0x00001000 | 0x00000800 | 0x00000008 | 0x00080000
+    open_filename = OPENFILENAMEW()
+    open_filename.lStructSize = ctypes.sizeof(OPENFILENAMEW)
+    open_filename.hwndOwner = None
+    open_filename.lpstrFilter = filters
+    open_filename.nFilterIndex = 1
+    open_filename.lpstrFile = ctypes.cast(file_buffer, ctypes.c_void_p)
+    open_filename.nMaxFile = len(file_buffer)
+    open_filename.lpstrInitialDir = initial_dir or None
+    open_filename.lpstrTitle = title
+    open_filename.Flags = flags
+    if ctypes.windll.comdlg32.GetOpenFileNameW(ctypes.byref(open_filename)):
+        return file_buffer.value
+    return ""
 
 
 def get_open_with(cfg: dict) -> str:
@@ -610,142 +723,19 @@ class QueueWriter:
         pass
 
 
-class RoundedFrame(tk.Frame):
-    def __init__(self, parent, radius=16, bg="#ffffff", border="#e5e7eb", padding=6, **kwargs):
-        parent_bg = "#f6f8fb"
-        try:
-            parent_bg = parent.cget("bg")
-        except tk.TclError:
-            pass
-        super().__init__(parent, bg=parent_bg, **kwargs)
-        self.radius = radius
-        self.bg_color = bg
-        self.border_color = border
-        self.padding = padding
-        self.canvas = tk.Canvas(self, bg=parent_bg, highlightthickness=0, bd=0)
-        self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
-        self.inner = tk.Frame(self, bg=bg)
-        self.inner.place(x=padding, y=padding, relwidth=1, relheight=1, width=-padding * 2, height=-padding * 2)
-        self.bind("<Configure>", self.draw)
-
-    def draw(self, _event=None):
-        self.canvas.delete("all")
-        width = max(2, self.winfo_width())
-        height = max(2, self.winfo_height())
-        self.draw_round_rect(0, 0, width - 1, height - 1, self.radius, self.border_color)
-        self.draw_round_rect(1, 1, width - 2, height - 2, max(1, self.radius - 1), self.bg_color)
-
-    def draw_round_rect(self, x1, y1, x2, y2, radius, color):
-        radius = min(radius, int((x2 - x1) / 2), int((y2 - y1) / 2))
-        self.canvas.create_rectangle(x1 + radius, y1, x2 - radius, y2, fill=color, outline=color)
-        self.canvas.create_rectangle(x1, y1 + radius, x2, y2 - radius, fill=color, outline=color)
-        self.canvas.create_oval(x1, y1, x1 + radius * 2, y1 + radius * 2, fill=color, outline=color)
-        self.canvas.create_oval(x2 - radius * 2, y1, x2, y1 + radius * 2, fill=color, outline=color)
-        self.canvas.create_oval(x1, y2 - radius * 2, x1 + radius * 2, y2, fill=color, outline=color)
-        self.canvas.create_oval(x2 - radius * 2, y2 - radius * 2, x2, y2, fill=color, outline=color)
-
-
-class RoundedButton(RoundedFrame):
-    def __init__(self, parent, text, command=None, radius=10, bg="#e8f0ff", fg="#111827", active_bg="#dbeafe", height=40):
-        super().__init__(parent, radius=radius, bg=bg, border=bg, padding=2, height=height, cursor="hand2")
-        self.command = command
-        self.normal_bg = bg
-        self.normal_fg = fg
-        self.active_bg = active_bg
-        self.label = tk.Label(self.inner, text=text, bg=bg, fg=fg, font=("Microsoft YaHei UI", 10), anchor="w", padx=14)
-        self.label.pack(fill=tk.BOTH, expand=True)
-        for widget in (self, self.canvas, self.inner, self.label):
-            widget.bind("<Button-1>", self.invoke)
-            widget.bind("<Enter>", self.on_enter)
-            widget.bind("<Leave>", self.on_leave)
-
-    def invoke(self, _event=None):
-        if self.command:
-            self.command()
-
-    def on_enter(self, _event=None):
-        self.set_colors(self.active_bg, self.normal_fg)
-
-    def on_leave(self, _event=None):
-        self.set_colors(self.normal_bg, self.normal_fg)
-
-    def set_colors(self, bg, fg):
-        self.bg_color = bg
-        self.border_color = bg
-        self.inner.configure(bg=bg)
-        self.label.configure(bg=bg, fg=fg)
-        self.draw()
-
-    def set_active(self, active):
-        if active:
-            self.normal_bg = "#e8f0ff"
-            self.normal_fg = "#1261ff"
-        else:
-            self.normal_bg = "#ffffff"
-            self.normal_fg = "#1f2937"
-        self.set_colors(self.normal_bg, self.normal_fg)
-
-
-class ScrollFrame(tk.Frame):
-    def __init__(self, parent, bg="#f6f8fb"):
-        super().__init__(parent, bg=bg)
-        self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        self.scrollbar = tk.Canvas(self, width=10, bg=bg, highlightthickness=0, bd=0)
-        self.scrollbar.grid(row=0, column=1, sticky="ns", padx=(8, 0))
-        self.inner = tk.Frame(self.canvas, bg=bg)
-        self.window_id = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
-        self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        self.inner.bind("<Configure>", self.update_scroll_region)
-        self.canvas.bind("<Configure>", self.update_canvas_width)
-        self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
-        self.scrollbar.bind("<Button-1>", self.on_scrollbar_click)
-
-    def update_scroll_region(self, _event=None):
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self.draw_scrollbar()
-
-    def update_canvas_width(self, event):
-        self.canvas.itemconfigure(self.window_id, width=event.width)
-        self.draw_scrollbar()
-
-    def on_mousewheel(self, event):
-        if self.winfo_containing(event.x_root, event.y_root) is None:
-            return
-        self.canvas.yview_scroll(int(-event.delta / 120), "units")
-        self.draw_scrollbar()
-
-    def on_scrollbar_click(self, event):
-        height = max(1, self.scrollbar.winfo_height())
-        self.canvas.yview_moveto(event.y / height)
-        self.draw_scrollbar()
-
-    def draw_scrollbar(self):
-        self.scrollbar.delete("all")
-        first, last = self.canvas.yview()
-        height = max(1, self.scrollbar.winfo_height())
-        if first <= 0 and last >= 1:
-            return
-        thumb_top = max(4, int(first * height))
-        thumb_bottom = min(height - 4, int(last * height))
-        if thumb_bottom - thumb_top < 30:
-            thumb_bottom = min(height - 4, thumb_top + 30)
-        self.scrollbar.create_rectangle(3, thumb_top, 7, thumb_bottom, fill="#cbd5e1", outline="")
-
-
-class ConfigApp:
+class PySideConfigApp(QMainWindow if QApplication else object):
     DOWNLOAD_MODE_LABELS = {"完整谱面": "full", "无视频谱面": "novideo"}
     DOWNLOAD_METHOD_LABELS = {"程序内下载": "direct", "浏览器打开": "browser"}
     OPEN_WITH_LABELS = {"系统默认": "default", "osu! stable": "stable", "osu! lazer": "lazer"}
 
-    def __init__(self, root):
-        self.root = root
-        self.root.title("osu! Sayobot Helper")
-        self.root.geometry("1180x780")
-        self.root.resizable(False, False)
-        self.root.configure(bg="#f6f8fb")
-        self.root.overrideredirect(True)
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("osu! Sayobot Helper")
+        self.setFixedSize(1180, 780)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window | Qt.WindowSystemMenuHint | Qt.WindowMinimizeButtonHint)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        if os.path.exists(ICON_PATH):
+            self.setWindowIcon(QIcon(ICON_PATH))
 
         self.monitor_thread = None
         self.stop_event = threading.Event()
@@ -757,60 +747,214 @@ class ConfigApp:
         self.cfg = load_config()
 
         self.vars = {}
-        self.option_cards = {}
+        self.option_groups = {}
         self.nav_buttons = {}
-        self.pages = {}
-        self.current_page = None
-        self.status_var = tk.StringVar(value="监听未启动")
-        self.save_state_var = tk.StringVar(value="配置会自动保存")
-        self.page_title_var = tk.StringVar(value="设备状态")
-        self.save_after_id = None
+        self.drag_pos = None
         self.loading_vars = False
 
-        self.setup_style()
+        self.save_timer = QTimer(self)
+        self.save_timer.setSingleShot(True)
+        self.save_timer.timeout.connect(self.auto_save)
+        self.log_timer = QTimer(self)
+        self.log_timer.timeout.connect(self.drain_log_queue)
+        self.log_timer.start(100)
+
         self.build_ui()
         self.load_vars()
-        self.bind_auto_save()
         self.show_page("status")
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.root.after(100, self.drain_log_queue)
-        self.root.after(200, self.show_in_taskbar)
         self.start_monitor()
 
-    def setup_style(self):
-        style = ttk.Style()
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
-        style.configure(".", background="#ffffff", foreground="#111827", font=("Microsoft YaHei UI", 10))
-        style.configure("TFrame", background="#ffffff")
-        style.configure("App.TFrame", background="#f6f8fb")
-        style.configure("Sidebar.TFrame", background="#ffffff")
-        style.configure("Main.TFrame", background="#f6f8fb")
-        style.configure("Card.TFrame", background="#ffffff")
-        style.configure("TLabel", background="#ffffff", foreground="#111827")
-        style.configure("Muted.TLabel", background="#ffffff", foreground="#64748b")
-        style.configure("PageTitle.TLabel", background="#f6f8fb", foreground="#111827", font=("Microsoft YaHei UI", 16, "bold"))
-        style.configure("Brand.TLabel", background="#ffffff", foreground="#1261ff", font=("Microsoft YaHei UI", 16, "bold"))
-        style.configure("Section.TLabel", background="#ffffff", foreground="#111827", font=("Microsoft YaHei UI", 12, "bold"))
-        style.configure("Metric.TLabel", background="#ffffff", foreground="#111827", font=("Microsoft YaHei UI", 24, "bold"))
-        style.configure("TButton", padding=(12, 8), background="#edf5ff", foreground="#111827", borderwidth=0)
-        style.map("TButton", background=[("active", "#dbeafe")])
-        style.configure("TCheckbutton", background="#ffffff", foreground="#111827")
-        style.configure("TCombobox", fieldbackground="#ffffff", background="#ffffff", arrowcolor="#111827")
-
     def build_ui(self):
-        self.root.grid_rowconfigure(0, weight=1)
-        self.root.grid_columnconfigure(1, weight=1)
+        self.setStyleSheet(
+            """
+            QWidget {
+                font-family: "Microsoft YaHei UI";
+                color: #111827;
+                background: transparent;
+                font-size: 14px;
+            }
+            QWidget#AppShell {
+                background: #f6f8fb;
+                border-radius: 18px;
+            }
+            #Sidebar {
+                background: #ffffff;
+                border-right: 1px solid #e5e7eb;
+            }
+            #Brand {
+                color: #1261ff;
+                font-size: 22px;
+                font-weight: 800;
+            }
+            #PageTitle {
+                background: #f6f8fb;
+                font-size: 22px;
+                font-weight: 800;
+            }
+            QPushButton {
+                border: none;
+                border-radius: 12px;
+                padding: 10px 14px;
+                text-align: left;
+                background: transparent;
+            }
+            QPushButton:hover {
+                background: #f1f6ff;
+            }
+            QPushButton[active="true"], QPushButton:checked {
+                background: #e8f0ff;
+                color: #1261ff;
+            }
+            QPushButton#PrimaryButton {
+                background: #e8f0ff;
+                color: #111827;
+                text-align: center;
+                font-weight: 600;
+            }
+            QPushButton#PrimaryButton:hover {
+                background: #dbeafe;
+            }
+            QPushButton#WindowButton {
+                background: transparent;
+                color: #64748b;
+                font-size: 20px;
+                font-weight: 800;
+                text-align: center;
+                padding: 0;
+            }
+            QPushButton#WindowButton:hover {
+                background: #e8f0ff;
+            }
+            QPushButton#CloseButton:hover {
+                background: #fee2e2;
+                color: #dc2626;
+            }
+            QFrame#Card, QFrame#SoftCard, QPushButton#OptionCard {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 18px;
+            }
+            QFrame#SoftCard {
+                background: #f8fafc;
+                border-radius: 14px;
+            }
+            QPushButton#OptionCard {
+                padding: 18px 22px;
+                text-align: left;
+                color: #111827;
+                font-size: 15px;
+                font-weight: 700;
+            }
+            QPushButton#OptionCard:checked {
+                background: #eef4ff;
+                border: 1px solid #1261ff;
+                color: #111827;
+            }
+            QLabel#Muted {
+                color: #64748b;
+                background: transparent;
+            }
+            QLabel#SectionTitle {
+                font-size: 18px;
+                font-weight: 800;
+                background: transparent;
+            }
+            QLabel#Metric {
+                font-size: 36px;
+                font-weight: 900;
+                background: transparent;
+            }
+            QLabel#Badge {
+                border-radius: 0;
+                padding: 8px 18px;
+                background: #ffe8e8;
+                color: #dc2626;
+            }
+            QLineEdit {
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                padding: 10px 12px;
+                background: #ffffff;
+            }
+            QCheckBox {
+                background: transparent;
+                spacing: 12px;
+                font-weight: 700;
+                padding: 4px;
+            }
+            QCheckBox::indicator {
+                width: 22px;
+                height: 22px;
+                border-radius: 6px;
+                border: 2px solid #cbd5e1;
+                background: #ffffff;
+            }
+            QCheckBox::indicator:checked {
+                background: #1261ff;
+                border: 2px solid #1261ff;
+                image: none;
+            }
+            QTextEdit {
+                background: #0f172a;
+                color: #e5e7eb;
+                border: none;
+                border-radius: 14px;
+                padding: 14px;
+                font-family: Consolas;
+            }
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 10px;
+                margin: 6px 0 6px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #cbd5e1;
+                border-radius: 5px;
+                min-height: 36px;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            """
+        )
 
-        sidebar = ttk.Frame(self.root, style="Sidebar.TFrame", padding=(14, 20))
-        sidebar.grid(row=0, column=0, sticky="ns")
-        sidebar.grid_rowconfigure(8, weight=1)
-        sidebar.configure(width=255)
-        sidebar.grid_propagate(False)
+        root = QWidget()
+        root.setObjectName("AppShell")
+        self.setCentralWidget(root)
+        root_layout = QHBoxLayout(root)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        ttk.Label(sidebar, text="🎮 osu! Sayobot", style="Brand.TLabel").grid(row=0, column=0, sticky="w", padx=6, pady=(0, 28))
+        sidebar = QFrame()
+        sidebar.setObjectName("Sidebar")
+        sidebar.setFixedWidth(255)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(18, 24, 18, 18)
+        sidebar_layout.setSpacing(10)
+
+        brand_row = QWidget()
+        brand_row.setObjectName("Brand")
+        brand_row.setFixedHeight(52)
+        brand_layout = QHBoxLayout(brand_row)
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setSpacing(12)
+        brand_icon = QLabel()
+        brand_icon.setFixedSize(40, 40)
+        brand_icon_path = APP_ICON_IMAGE_PATH if os.path.exists(APP_ICON_IMAGE_PATH) else ICON_PATH
+        if os.path.exists(brand_icon_path):
+            brand_icon.setPixmap(QPixmap(brand_icon_path).scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        brand_text = QLabel("osu! Sayobot")
+        brand_text.setObjectName("Brand")
+        brand_layout.addWidget(brand_icon)
+        brand_layout.addWidget(brand_text)
+        brand_layout.addStretch()
+        sidebar_layout.addWidget(brand_row)
+
         nav_items = [
             ("status", "设备状态"),
             ("config", "参数配置"),
@@ -818,75 +962,57 @@ class ConfigApp:
             ("logs", "日志"),
             ("about", "关于"),
         ]
-        for index, (key, text) in enumerate(nav_items, start=1):
-            button = RoundedButton(
-                sidebar,
-                text=text,
-                bg="#ffffff",
-                fg="#1f2937",
-                active_bg="#e8f0ff",
-                height=50,
-                command=lambda page=key: self.show_page(page),
-            )
-            button.grid(row=index, column=0, sticky="ew", pady=4)
+        for key, text in nav_items:
+            button = QPushButton(text)
+            button.setCheckable(True)
+            button.setFixedHeight(50)
+            button.clicked.connect(lambda _checked=False, page=key: self.show_page(page))
             self.nav_buttons[key] = button
+            sidebar_layout.addWidget(button)
 
-        footer = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        footer.grid(row=9, column=0, sticky="sew", pady=(20, 0))
-        ttk.Label(footer, text="版本 2.1.0", style="Muted.TLabel").pack(anchor="w", padx=6)
-        ttk.Label(footer, text="作者 ColdSnowFox", style="Muted.TLabel").pack(anchor="w", padx=6, pady=(8, 0))
+        sidebar_layout.addStretch()
+        version = QLabel("版本 3.5.1")
+        version.setObjectName("Muted")
+        author = QLabel("作者 ColdSnowFox")
+        author.setObjectName("Muted")
+        sidebar_layout.addWidget(version)
+        sidebar_layout.addWidget(author)
+        root_layout.addWidget(sidebar)
 
-        main = ttk.Frame(self.root, style="Main.TFrame", padding=(24, 18))
-        main.grid(row=0, column=1, sticky="nsew")
-        main.grid_rowconfigure(1, weight=1)
-        main.grid_columnconfigure(0, weight=1)
+        main = QWidget()
+        main_layout = QVBoxLayout(main)
+        main_layout.setContentsMargins(28, 22, 28, 20)
+        main_layout.setSpacing(20)
 
-        topbar = ttk.Frame(main, style="Main.TFrame")
-        topbar.grid(row=0, column=0, sticky="ew", pady=(0, 18))
-        topbar.grid_columnconfigure(0, weight=1)
-        topbar.bind("<ButtonPress-1>", self.begin_move)
-        topbar.bind("<B1-Motion>", self.do_move)
-        ttk.Label(topbar, textvariable=self.page_title_var, style="PageTitle.TLabel").grid(row=0, column=0, sticky="w")
-        self.status_badge = tk.Label(
-            topbar,
-            textvariable=self.status_var,
-            bg="#ffe8e8",
-            fg="#dc2626",
-            padx=14,
-            pady=7,
-            font=("Microsoft YaHei UI", 10),
-        )
-        self.status_badge.grid(row=0, column=1, sticky="e", padx=(0, 18))
-        tk.Button(
-            topbar,
-            text="−",
-            command=self.minimize_window,
-            relief=tk.FLAT,
-            bd=0,
-            bg="#f6f8fb",
-            fg="#64748b",
-            activebackground="#e8f0ff",
-            font=("Microsoft YaHei UI", 16, "bold"),
-            width=3,
-        ).grid(row=0, column=2, sticky="e")
-        tk.Button(
-            topbar,
-            text="×",
-            command=self.on_close,
-            relief=tk.FLAT,
-            bd=0,
-            bg="#f6f8fb",
-            fg="#64748b",
-            activebackground="#fee2e2",
-            activeforeground="#dc2626",
-            font=("Microsoft YaHei UI", 16, "bold"),
-            width=3,
-        ).grid(row=0, column=3, sticky="e")
+        topbar = QWidget()
+        topbar.setFixedHeight(42)
+        topbar_layout = QHBoxLayout(topbar)
+        topbar_layout.setContentsMargins(0, 0, 0, 0)
+        self.page_title = QLabel("设备状态")
+        self.page_title.setObjectName("PageTitle")
+        topbar_layout.addWidget(self.page_title)
+        topbar_layout.addStretch()
+        self.status_badge = QLabel("未连接")
+        self.status_badge.setObjectName("Badge")
+        topbar_layout.addWidget(self.status_badge)
+        minimize = QPushButton("−")
+        minimize.setObjectName("WindowButton")
+        minimize.setFixedSize(44, 38)
+        minimize.clicked.connect(self.showMinimized)
+        close = QPushButton("×")
+        close.setObjectName("CloseButton")
+        close.setFixedSize(44, 38)
+        close.clicked.connect(self.close)
+        topbar_layout.addWidget(minimize)
+        topbar_layout.addWidget(close)
+        topbar.mousePressEvent = self.begin_move
+        topbar.mouseMoveEvent = self.do_move
+        main_layout.addWidget(topbar)
 
-        self.content = ttk.Frame(main, style="Main.TFrame")
-        self.content.grid(row=1, column=0, sticky="nsew")
-        self.content.grid_rowconfigure(0, weight=1)
-        self.content.grid_columnconfigure(0, weight=1)
+        self.pages = QStackedWidget()
+        self.page_indexes = {}
+        main_layout.addWidget(self.pages, 1)
+        root_layout.addWidget(main, 1)
 
         self.build_status_page()
         self.build_config_page()
@@ -894,88 +1020,105 @@ class ConfigApp:
         self.build_logs_page()
         self.build_about_page()
 
-    def create_page(self, key):
-        frame = ttk.Frame(self.content, style="Main.TFrame")
-        frame.grid(row=0, column=0, sticky="nsew")
-        self.pages[key] = frame
-        return frame
+    def make_page(self, key):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+        self.page_indexes[key] = self.pages.addWidget(page)
+        return page, layout
 
-    def card(self, parent, row, column, title, columnspan=1, rowspan=1, sticky="nsew", height=160):
-        rounded = RoundedFrame(parent, radius=18, bg="#ffffff", border="#e5e7eb", height=height)
-        rounded.grid(row=row, column=column, columnspan=columnspan, rowspan=rowspan, sticky=sticky, padx=10, pady=10)
-        frame = rounded.inner
-        frame.grid_columnconfigure(0, weight=1)
-        ttk.Label(frame, text=title, style="Section.TLabel").grid(row=0, column=0, sticky="w", padx=20, pady=(18, 10))
-        return frame
+    def card(self, title=None):
+        frame = QFrame()
+        frame.setObjectName("Card")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+        if title:
+            label = QLabel(title)
+            label.setObjectName("SectionTitle")
+            layout.addWidget(label)
+        return frame, layout
 
     def build_status_page(self):
-        page = self.create_page("status")
-        page.grid_columnconfigure(0, weight=1)
-        page.grid_columnconfigure(1, weight=1)
-        page.grid_rowconfigure(1, weight=1)
+        page, layout = self.make_page("status")
+        top = QHBoxLayout()
+        top.setSpacing(20)
+        monitor, monitor_layout = self.card("监听状态")
+        self.status_label = QLabel("监听中")
+        self.status_label.setObjectName("Metric")
+        self.save_state_label = QLabel("配置会自动保存")
+        self.save_state_label.setObjectName("Muted")
+        monitor_layout.addWidget(self.status_label)
+        monitor_layout.addWidget(self.save_state_label)
+        top.addWidget(monitor, 1)
 
-        monitor = self.card(page, 0, 0, "监听状态", height=160)
-        ttk.Label(monitor, textvariable=self.status_var, style="Metric.TLabel").grid(row=1, column=0, sticky="w", padx=22)
-        ttk.Label(monitor, textvariable=self.save_state_var, style="Muted.TLabel").grid(row=2, column=0, sticky="w", padx=22, pady=(4, 20))
+        quick, quick_layout = self.card("快速操作")
+        quick_layout.addWidget(self.action_button("启动监听", self.start_monitor))
+        quick_layout.addWidget(self.action_button("停止监听", self.stop_monitor))
+        top.addWidget(quick, 1)
+        layout.addLayout(top)
 
-        quick = self.card(page, 0, 1, "快速操作", height=160)
-        self.add_round_button(quick, "启动监听", self.start_monitor, row=1, column=0, padx=22, pady=(2, 8))
-        self.add_round_button(quick, "停止监听", self.stop_monitor, row=2, column=0, padx=22, pady=(0, 20))
+        info, info_layout = self.card("当前下载配置")
+        info_grid = QGridLayout()
+        info_grid.setSpacing(16)
+        self.status_download_mode = QLabel()
+        self.status_download_method = QLabel()
+        self.status_open_with = QLabel()
+        self.info_tile(info_grid, 0, 0, "下载类型", self.status_download_mode)
+        self.info_tile(info_grid, 0, 1, "下载方式", self.status_download_method)
+        self.info_tile(info_grid, 0, 2, "打开方式", self.status_open_with)
+        info_layout.addLayout(info_grid)
+        layout.addWidget(info)
+        layout.addStretch()
 
-        info = self.card(page, 1, 0, "当前下载配置", columnspan=2, height=410)
-        info.grid_columnconfigure((0, 1, 2), weight=1)
-        self.status_download_mode = tk.StringVar()
-        self.status_download_method = tk.StringVar()
-        self.status_open_with = tk.StringVar()
-        self.info_tile(info, 1, 0, "下载类型", self.status_download_mode)
-        self.info_tile(info, 1, 1, "下载方式", self.status_download_method)
-        self.info_tile(info, 1, 2, "打开方式", self.status_open_with)
-
-    def info_tile(self, parent, row, column, label, value_var):
-        rounded = RoundedFrame(parent, radius=10, bg="#f8fafc", border="#edf2f7", height=76)
-        rounded.grid(row=row, column=column, sticky="ew", padx=20 if column == 0 else 8, pady=(8, 20))
-        tile = rounded.inner
-        tk.Label(tile, text=label, bg="#f8fafc", fg="#64748b", font=("Microsoft YaHei UI", 9)).pack(anchor="w", padx=14, pady=(12, 4))
-        tk.Label(tile, textvariable=value_var, bg="#f8fafc", fg="#111827", font=("Microsoft YaHei UI", 10)).pack(anchor="w", padx=14, pady=(0, 12))
+    def info_tile(self, grid, row, column, label, value_label):
+        tile = QFrame()
+        tile.setObjectName("SoftCard")
+        tile_layout = QVBoxLayout(tile)
+        tile_layout.setContentsMargins(16, 14, 16, 14)
+        title = QLabel(label)
+        title.setObjectName("Muted")
+        value_label.setStyleSheet("background: transparent; font-size: 16px; font-weight: 700;")
+        tile_layout.addWidget(title)
+        tile_layout.addWidget(value_label)
+        grid.addWidget(tile, row, column)
 
     def build_config_page(self):
-        page = self.create_page("config")
-        page.grid_columnconfigure(0, weight=1)
-        page.grid_rowconfigure(0, weight=1)
-        self.config_scroll = ScrollFrame(page)
-        self.config_scroll.grid(row=0, column=0, sticky="nsew")
-        self.config_scroll.inner.grid_columnconfigure(0, weight=1)
-        form_card = self.card(self.config_scroll.inner, 0, 0, "参数配置", height=860)
-        form_card.grid_columnconfigure(0, weight=1)
+        page, layout = self.make_page("config")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 10, 0)
+        content_layout.setSpacing(16)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
-        self.vars["download_mode"] = tk.StringVar()
-        self.vars["download_method"] = tk.StringVar()
-        self.vars["open_with"] = tk.StringVar()
-
+        form, form_layout = self.card("参数配置")
         self.add_option_group(
-            form_card,
-            1,
+            form_layout,
             "下载类型",
             "download_mode",
             [
                 ("完整谱面", "包含背景视频与完整资源"),
                 ("无视频谱面", "体积更小，下载更快"),
             ],
+            self.DOWNLOAD_MODE_LABELS,
         )
         self.add_option_group(
-            form_card,
-            2,
+            form_layout,
             "下载方式",
             "download_method",
             [
                 ("程序内下载", "直接保存到本地目录"),
                 ("浏览器打开", "沿用浏览器下载链接"),
             ],
+            self.DOWNLOAD_METHOD_LABELS,
         )
-        self.add_path_entry(form_card, 3, "保存目录", "download_dir", folder=True)
+        self.add_path_row(form_layout, "保存目录", "download_dir", True)
         self.add_option_group(
-            form_card,
-            4,
+            form_layout,
             "打开方式",
             "open_with",
             [
@@ -983,153 +1126,112 @@ class ConfigApp:
                 ("osu! stable", "下载后导入 stable"),
                 ("osu! lazer", "下载后导入 lazer"),
             ],
-            columns=2,
+            self.OPEN_WITH_LABELS,
         )
 
-        self.vars["keep_original"] = tk.BooleanVar()
-        self.vars["auto_download"] = tk.BooleanVar()
-        self.vars["open_after_download"] = tk.BooleanVar()
-        checks_round = RoundedFrame(form_card, radius=16, bg="#f8fafc", border="#e5e7eb", height=158)
-        checks_round.grid(row=5, column=0, sticky="ew", padx=20, pady=(10, 22))
-        checks = checks_round.inner
-        self.check_cards = []
-        self.add_check_option(checks, "自动下载谱面", self.vars["auto_download"])
-        self.add_check_option(checks, "下载完成后自动打开", self.vars["open_after_download"])
-        self.add_check_option(checks, "浏览器打开时保留 osu! 原页面", self.vars["keep_original"])
+        checks = QFrame()
+        checks.setObjectName("SoftCard")
+        checks_layout = QVBoxLayout(checks)
+        checks_layout.setContentsMargins(18, 16, 18, 16)
+        checks_layout.setSpacing(10)
+        self.vars["auto_download"] = QCheckBox("自动下载谱面")
+        self.vars["open_after_download"] = QCheckBox("下载完成后自动打开")
+        self.vars["keep_original"] = QCheckBox("浏览器打开时保留 osu! 原页面")
+        for check in (self.vars["auto_download"], self.vars["open_after_download"], self.vars["keep_original"]):
+            check.stateChanged.connect(self.schedule_auto_save)
+            checks_layout.addWidget(check)
+        form_layout.addWidget(checks)
+        content_layout.addWidget(form)
+        content_layout.addStretch()
 
-    def add_option_group(self, parent, row, title, key, options, columns=None):
-        columns = columns or len(options)
-        rows = (len(options) + columns - 1) // columns
-        group = ttk.Frame(parent)
-        group.grid(row=row, column=0, sticky="ew", padx=22, pady=(10, 14))
-        min_width = 220 if columns >= 3 else 270
-        for column in range(columns):
-            group.grid_columnconfigure(column, weight=1, minsize=min_width, uniform=key)
-        ttk.Label(group, text=title, style="Section.TLabel").grid(row=0, column=0, columnspan=columns, sticky="w", pady=(0, 12))
-        self.option_cards[key] = []
+    def add_option_group(self, parent_layout, title, key, options, mapping):
+        title_label = QLabel(title)
+        title_label.setObjectName("SectionTitle")
+        parent_layout.addWidget(title_label)
+        group = QButtonGroup(self)
+        group.setExclusive(True)
+        self.option_groups[key] = {"group": group, "buttons": {}, "mapping": mapping}
+        for label, hint in options:
+            button = QPushButton(f"{label}\n{hint}")
+            button.setObjectName("OptionCard")
+            button.setCheckable(True)
+            button.setMinimumHeight(86)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.clicked.connect(lambda _checked=False, option_key=key: self.option_changed(option_key))
+            group.addButton(button)
+            self.option_groups[key]["buttons"][label] = button
+            parent_layout.addWidget(button)
 
-        for index, (label, hint) in enumerate(options):
-            row_index = 1 + index // columns
-            column = index % columns
-            rounded = RoundedFrame(group, radius=14, bg="#ffffff", border="#d8dee8", cursor="hand2", height=106)
-            rounded.grid(
-                row=row_index,
-                column=column,
-                sticky="nsew",
-                padx=(0 if column == 0 else 9, 0 if column == columns - 1 else 9),
-                pady=(0, 12 if row_index < rows else 0),
-            )
-            card = rounded.inner
-            dot = tk.Label(card, text="○", bg="#ffffff", fg="#cbd5e1", font=("Microsoft YaHei UI", 20))
-            dot.grid(row=0, column=0, rowspan=2, padx=(18, 12), pady=18, sticky="n")
-            title_label = tk.Label(card, text=label, bg="#ffffff", fg="#111827", font=("Microsoft YaHei UI", 11, "bold"), anchor="w")
-            title_label.grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=(18, 3))
-            hint_label = tk.Label(card, text=hint, bg="#ffffff", fg="#64748b", font=("Microsoft YaHei UI", 9), wraplength=240, justify="left", anchor="w")
-            hint_label.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=(0, 16))
-            card.grid_columnconfigure(1, weight=1)
-
-            widgets = (rounded, card, dot, title_label, hint_label)
-            for widget in widgets:
-                widget.bind("<Button-1>", lambda _event, value=label, var=self.vars[key]: var.set(value))
-            self.option_cards[key].append((label, widgets))
-
-    def add_check_option(self, parent, text, var):
-        row = len(getattr(self, "check_cards", []))
-        item = tk.Frame(parent, bg="#f8fafc", cursor="hand2")
-        item.pack(fill=tk.X, padx=16, pady=(10 if row == 0 else 4, 0))
-        box = tk.Label(
-            item,
-            width=2,
-            height=1,
-            text="",
-            bg="#ffffff",
-            fg="#ffffff",
-            bd=0,
-            font=("Microsoft YaHei UI", 10, "bold"),
-        )
-        box.pack(side=tk.LEFT, padx=(0, 10))
-        label = tk.Label(item, text=text, bg="#f8fafc", fg="#111827", font=("Microsoft YaHei UI", 10), cursor="hand2")
-        label.pack(side=tk.LEFT)
-
-        def toggle(_event=None):
-            var.set(not var.get())
-
-        def refresh(*_args):
-            active = bool(var.get())
-            box.configure(text="✓" if active else "", bg="#1261ff" if active else "#ffffff")
-
-        for widget in (item, box, label):
-            widget.bind("<Button-1>", toggle)
-        var.trace_add("write", refresh)
-        refresh()
-        self.check_cards.append((item, box, label))
+    def add_path_row(self, parent_layout, label, key, folder=False):
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(12)
+        title = QLabel(label)
+        title.setFixedWidth(90)
+        edit = QLineEdit()
+        edit.textChanged.connect(self.schedule_auto_save)
+        self.vars[key] = edit
+        button = self.action_button("浏览", lambda: self.choose_path(key, folder))
+        button.setFixedWidth(116)
+        row_layout.addWidget(title)
+        row_layout.addWidget(edit, 1)
+        row_layout.addWidget(button)
+        parent_layout.addWidget(row)
 
     def build_paths_page(self):
-        page = self.create_page("paths")
-        page.grid_columnconfigure(0, weight=1)
-        path_card = self.card(page, 0, 0, "osu! 路径", height=230)
-        path_card.grid_columnconfigure(1, weight=1)
-        self.add_path_entry(path_card, 1, "stable", "stable_path")
-        self.add_path_entry(path_card, 2, "lazer", "lazer_path")
-        self.add_round_button(path_card, "检测 osu! 路径", self.detect_osu_paths, row=3, column=0, columnspan=3, padx=20, pady=(10, 20))
+        page, layout = self.make_page("paths")
+        card, card_layout = self.card("osu! 路径")
+        self.add_path_row(card_layout, "stable", "stable_path")
+        self.add_path_row(card_layout, "lazer", "lazer_path")
+        card_layout.addWidget(self.action_button("检测 osu! 路径", self.detect_osu_paths))
+        layout.addWidget(card)
+        layout.addStretch()
 
     def build_logs_page(self):
-        page = self.create_page("logs")
-        page.grid_rowconfigure(0, weight=1)
-        page.grid_columnconfigure(0, weight=1)
-        log_card = self.card(page, 0, 0, "日志", height=580)
-        log_card.grid_rowconfigure(1, weight=1)
-        self.log_text = tk.Text(
-            log_card,
-            bg="#0f172a",
-            fg="#e5e7eb",
-            insertbackground="#e5e7eb",
-            relief=tk.FLAT,
-            wrap=tk.WORD,
-            font=("Consolas", 10),
-            padx=14,
-            pady=12,
-        )
-        self.log_scroll = ttk.Scrollbar(log_card, orient=tk.VERTICAL, command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=self.log_scroll.set)
-        self.log_text.grid(row=1, column=0, sticky="nsew", padx=(20, 0), pady=(0, 20))
-        self.log_scroll.grid(row=1, column=1, sticky="ns", padx=(0, 20), pady=(0, 20))
+        page, layout = self.make_page("logs")
+        card, card_layout = self.card("日志")
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        card_layout.addWidget(self.log_text, 1)
+        layout.addWidget(card, 1)
 
     def build_about_page(self):
-        page = self.create_page("about")
-        page.grid_columnconfigure(0, weight=1)
-        about = self.card(page, 0, 0, "关于", height=180)
-        ttk.Label(about, text="osu! Sayobot Helper", style="Metric.TLabel").grid(row=1, column=0, sticky="w", padx=22)
-        ttk.Label(
-            about,
-            text="一个用于监听 osu! 谱面页面、自动下载并导入谱面的轻量工具。",
-            style="Muted.TLabel",
-        ).grid(row=2, column=0, sticky="w", padx=22, pady=(4, 20))
-
-    def add_combo(self, parent, row, label, key, values):
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=20, pady=9)
-        var = tk.StringVar()
-        self.vars[key] = var
-        ttk.Combobox(parent, textvariable=var, values=values, state="readonly").grid(
-            row=row, column=1, columnspan=2, sticky="ew", padx=(0, 20), pady=9
+        page, layout = self.make_page("about")
+        card, card_layout = self.card("关于")
+        title = QLabel("osu! Sayobot Helper")
+        title.setObjectName("Metric")
+        body = QLabel("一个用于监听 osu! 谱面页面、自动下载并导入谱面的轻量工具。")
+        body.setObjectName("Muted")
+        github = QLabel(
+            'GitHub：<a href="https://github.com/ColdSnowFox/osu-sayobot-helper">'
+            "https://github.com/ColdSnowFox/osu-sayobot-helper</a>"
         )
+        github.setObjectName("Muted")
+        github.setOpenExternalLinks(True)
+        releases = QLabel(
+            '发布页：<a href="https://github.com/ColdSnowFox/osu-sayobot-helper/releases">'
+            "https://github.com/ColdSnowFox/osu-sayobot-helper/releases</a>"
+        )
+        releases.setObjectName("Muted")
+        releases.setOpenExternalLinks(True)
+        card_layout.addWidget(title)
+        card_layout.addWidget(body)
+        card_layout.addSpacing(8)
+        card_layout.addWidget(github)
+        card_layout.addWidget(releases)
+        layout.addWidget(card)
+        layout.addStretch()
 
-    def add_path_entry(self, parent, row, label, key, folder=False):
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=20, pady=9)
-        var = tk.StringVar()
-        self.vars[key] = var
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", pady=9, padx=(0, 8))
-        command = (lambda: self.choose_folder(key)) if folder else (lambda: self.choose_file(key))
-        self.add_round_button(parent, "浏览", command, row=row, column=2, padx=(0, 20), pady=9, sticky="e", width=114)
-
-    def add_round_button(self, parent, text, command, row, column, columnspan=1, padx=0, pady=0, sticky="ew", width=None):
-        button = RoundedButton(parent, text=text, command=command, bg="#e8f0ff", fg="#111827", active_bg="#dbeafe", height=38)
-        if width:
-            button.configure(width=width)
-        button.grid(row=row, column=column, columnspan=columnspan, sticky=sticky, padx=padx, pady=pady)
+    def action_button(self, text, callback):
+        button = QPushButton(text)
+        button.setObjectName("PrimaryButton")
+        button.setFixedHeight(42)
+        button.clicked.connect(lambda _checked=False: callback())
         return button
 
     def show_page(self, key):
+        self.pages.setCurrentIndex(self.page_indexes[key])
         titles = {
             "status": "设备状态",
             "config": "参数配置",
@@ -1137,78 +1239,65 @@ class ConfigApp:
             "logs": "日志",
             "about": "关于",
         }
-        self.current_page = key
-        self.page_title_var.set(titles[key])
-        for page_key, page in self.pages.items():
-            if page_key == key:
-                page.tkraise()
+        self.page_title.setText(titles[key])
         for page_key, button in self.nav_buttons.items():
-            active = page_key == key
-            button.set_active(active)
+            button.setChecked(page_key == key)
 
     def load_vars(self):
         self.loading_vars = True
-        for key, var in self.vars.items():
+        for key, data in self.option_groups.items():
             value = self.cfg.get(key, "")
-            if isinstance(var, tk.BooleanVar):
-                var.set(bool(value))
-            else:
-                var.set(self.value_to_label(key, str(value)))
-        for key in self.option_cards:
-            self.refresh_option_cards(key)
-        self.update_status_tiles()
+            selected = self.value_to_label(key, str(value))
+            for label, button in data["buttons"].items():
+                button.setChecked(label == selected)
+        for key, widget in self.vars.items():
+            value = self.cfg.get(key, "")
+            if isinstance(widget, QCheckBox):
+                widget.setChecked(bool(value))
+            elif isinstance(widget, QLineEdit):
+                widget.setText(str(value))
         self.loading_vars = False
+        self.update_status_tiles()
 
-    def bind_auto_save(self):
-        for var in self.vars.values():
-            var.trace_add("write", self.schedule_auto_save)
-        for key in self.option_cards:
-            self.vars[key].trace_add("write", lambda *_args, option_key=key: self.refresh_option_cards(option_key))
+    def option_changed(self, key):
+        self.schedule_auto_save()
+        self.update_status_tiles()
+
+    def selected_option_label(self, key):
+        for label, button in self.option_groups[key]["buttons"].items():
+            if button.isChecked():
+                return label
+        return next(iter(self.option_groups[key]["buttons"]))
 
     def collect_config(self):
         updated = self.cfg.copy()
-        for key, var in self.vars.items():
-            if isinstance(var, tk.BooleanVar):
-                updated[key] = bool(var.get())
-            else:
-                updated[key] = self.label_to_value(key, var.get().strip())
+        for key in self.option_groups:
+            updated[key] = self.label_to_value(key, self.selected_option_label(key))
+        for key, widget in self.vars.items():
+            if isinstance(widget, QCheckBox):
+                updated[key] = widget.isChecked()
+            elif isinstance(widget, QLineEdit):
+                updated[key] = widget.text().strip()
         return updated
 
-    def schedule_auto_save(self, *_):
+    def schedule_auto_save(self, *_args):
         if self.loading_vars:
             return
-        self.save_state_var.set("正在自动保存...")
+        self.save_state_label.setText("正在自动保存...")
         self.update_status_tiles()
-        if self.save_after_id:
-            self.root.after_cancel(self.save_after_id)
-        self.save_after_id = self.root.after(350, self.auto_save)
-
-    def refresh_option_cards(self, key):
-        selected = self.vars[key].get()
-        for label, widgets in self.option_cards.get(key, []):
-            active = label == selected
-            bg = "#eef4ff" if active else "#ffffff"
-            border = "#1261ff" if active else "#d8dee8"
-            fg = "#1261ff" if active else "#cbd5e1"
-            rounded = widgets[0]
-            rounded.bg_color = bg
-            rounded.border_color = border
-            rounded.draw()
-            for widget in widgets[1:]:
-                widget.configure(bg=bg)
-            widgets[2].configure(text="●" if active else "○", fg=fg)
+        self.save_timer.start(350)
 
     def auto_save(self):
         self.cfg = self.collect_config()
         save_config(self.cfg)
-        self.save_state_var.set("配置已自动保存")
+        self.save_state_label.setText("配置已自动保存")
         print("配置已自动保存。")
 
     def update_status_tiles(self):
         if hasattr(self, "status_download_mode"):
-            self.status_download_mode.set(self.vars.get("download_mode", tk.StringVar(value="")).get())
-            self.status_download_method.set(self.vars.get("download_method", tk.StringVar(value="")).get())
-            self.status_open_with.set(self.vars.get("open_with", tk.StringVar(value="")).get())
+            self.status_download_mode.setText(self.selected_option_label("download_mode"))
+            self.status_download_method.setText(self.selected_option_label("download_method"))
+            self.status_open_with.setText(self.selected_option_label("open_with"))
 
     def value_to_label(self, key, value):
         maps = {
@@ -1216,9 +1305,7 @@ class ConfigApp:
             "download_method": self.DOWNLOAD_METHOD_LABELS,
             "open_with": self.OPEN_WITH_LABELS,
         }
-        if key not in maps:
-            return value
-        for label, internal in maps[key].items():
+        for label, internal in maps.get(key, {}).items():
             if internal == value:
                 return label
         return next(iter(maps[key]))
@@ -1231,6 +1318,18 @@ class ConfigApp:
         }
         return maps.get(key, {}).get(label, label)
 
+    def choose_path(self, key, folder=False):
+        try:
+            title = "选择保存目录" if folder else "选择启动器"
+            current = self.vars[key].text().strip()
+            start_dir = current if folder else os.path.dirname(current)
+            path = choose_folder_windows(title, start_dir) if folder else choose_file_windows(title, start_dir)
+
+            if path:
+                self.vars[key].setText(path)
+        except Exception as e:
+            print(f"打开选择窗口失败: {e}")
+
     def detect_osu_paths(self):
         self.cfg = self.collect_config()
         self.cfg["stable_path"] = ""
@@ -1238,18 +1337,8 @@ class ConfigApp:
         self.cfg = autofill_launcher_paths(self.cfg)
         save_config(self.cfg)
         self.load_vars()
-        self.save_state_var.set("osu! 路径已检测并保存")
+        self.save_state_label.setText("osu! 路径已检测并保存")
         print("osu! 路径检测完成。")
-
-    def choose_file(self, key):
-        path = filedialog.askopenfilename(title="选择启动器", filetypes=[("Executable", "*.exe"), ("All files", "*.*")])
-        if path:
-            self.vars[key].set(path)
-
-    def choose_folder(self, key):
-        path = filedialog.askdirectory(title="选择保存目录")
-        if path:
-            self.vars[key].set(path)
 
     def start_monitor(self):
         if self.monitor_thread and self.monitor_thread.is_alive():
@@ -1263,58 +1352,38 @@ class ConfigApp:
             daemon=True,
         )
         self.monitor_thread.start()
-        self.status_var.set("监听中")
-        self.status_badge.configure(bg="#e8f8ef", fg="#15803d")
+        self.status_label.setText("监听中")
+        self.status_badge.setText("监听中")
+        self.status_badge.setStyleSheet("background: #e8f8ef; color: #15803d; padding: 8px 18px;")
         print("监听已启动。")
 
     def stop_monitor(self):
         self.stop_event.set()
-        self.status_var.set("监听已停止")
-        self.status_badge.configure(bg="#ffe8e8", fg="#dc2626")
+        self.status_label.setText("监听已停止")
+        self.status_badge.setText("已停止")
+        self.status_badge.setStyleSheet("background: #ffe8e8; color: #dc2626; padding: 8px 18px;")
         print("正在停止监听...")
 
     def begin_move(self, event):
-        self.move_start_x = event.x_root
-        self.move_start_y = event.y_root
-        self.window_start_x = self.root.winfo_x()
-        self.window_start_y = self.root.winfo_y()
+        if event.button() == Qt.LeftButton:
+            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def do_move(self, event):
-        dx = event.x_root - self.move_start_x
-        dy = event.y_root - self.move_start_y
-        self.root.geometry(f"+{self.window_start_x + dx}+{self.window_start_y + dy}")
+        if self.drag_pos and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPosition().toPoint() - self.drag_pos)
 
-    def minimize_window(self):
-        self.root.overrideredirect(False)
-        self.root.iconify()
-        self.root.after(50, self.restore_frameless)
+    def apply_rounded_mask(self):
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), 18, 18)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
-    def restore_frameless(self):
-        if self.root.state() != "iconic":
-            self.root.overrideredirect(True)
-            self.root.after(50, self.show_in_taskbar)
-        else:
-            self.root.after(100, self.restore_frameless)
+    def resizeEvent(self, event):
+        self.apply_rounded_mask()
+        super().resizeEvent(event)
 
-    def show_in_taskbar(self):
-        if ctypes is None:
-            return
-        try:
-            hwnd = self.root.winfo_id()
-            parent = ctypes.windll.user32.GetParent(hwnd)
-            if parent:
-                hwnd = parent
-
-            get_window_long = ctypes.windll.user32.GetWindowLongW
-            set_window_long = ctypes.windll.user32.SetWindowLongW
-            ex_style = get_window_long(hwnd, -20)
-            ex_style = (ex_style | 0x00040000) & ~0x00000080
-            set_window_long(hwnd, -20, ex_style)
-
-            self.root.withdraw()
-            self.root.after(10, self.root.deiconify)
-        except Exception:
-            pass
+    def showEvent(self, event):
+        self.apply_rounded_mask()
+        super().showEvent(event)
 
     def drain_log_queue(self):
         while True:
@@ -1322,29 +1391,35 @@ class ConfigApp:
                 text = self.log_queue.get_nowait()
             except queue.Empty:
                 break
-            self.append_log_text(text)
-        self.root.after(100, self.drain_log_queue)
+            if hasattr(self, "log_text"):
+                if text.startswith("\r"):
+                    cursor = self.log_text.textCursor()
+                    cursor.movePosition(QTextCursor.End)
+                    cursor.select(QTextCursor.LineUnderCursor)
+                    cursor.removeSelectedText()
+                    cursor.insertText(text[1:])
+                else:
+                    self.log_text.moveCursor(QTextCursor.End)
+                    self.log_text.insertPlainText(text)
+                self.log_text.ensureCursorVisible()
 
-    def append_log_text(self, text):
-        if text.startswith("\r"):
-            self.log_text.delete("end-1c linestart", "end-1c lineend")
-            self.log_text.insert(tk.END, text[1:])
-        else:
-            self.log_text.insert(tk.END, text)
-        self.log_text.see(tk.END)
-
-    def on_close(self):
+    def closeEvent(self, event):
         self.stop_monitor()
         sys.stdout = self.original_stdout
         sys.stderr = self.original_stderr
-        self.root.destroy()
+        event.accept()
 
 
 def run_gui():
     setup_console_encoding()
-    root = tk.Tk()
-    ConfigApp(root)
-    root.mainloop()
+    if QApplication is None:
+        raise RuntimeError("PySide6 未安装，请先运行 pip install -r requirements.txt")
+    app = QApplication(sys.argv)
+    if os.path.exists(ICON_PATH):
+        app.setWindowIcon(QIcon(ICON_PATH))
+    window = PySideConfigApp()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

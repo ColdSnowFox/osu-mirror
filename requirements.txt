@@ -1,1 +1,2 @@
 pywinauto
+PySide6_Essentials

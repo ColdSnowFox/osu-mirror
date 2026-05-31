@@ -51,7 +51,7 @@ if errorlevel 1 (
 )
 
 echo Building %APP_NAME%.exe ...
-%PYTHON_CMD% -m PyInstaller --onefile --windowed --name "%APP_NAME%" --clean main.py
+%PYTHON_CMD% -m PyInstaller --onefile --windowed --icon assets\app.ico --add-data "assets\app.ico;assets" --add-data "assets\app-source.png;assets" --name "%APP_NAME%" --clean --exclude-module PySide6.QtNetwork --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtOpenGL --exclude-module PySide6.QtSvg --exclude-module PySide6.QtPrintSupport main.py
 if errorlevel 1 (
     echo Build failed.
     exit /b 1
