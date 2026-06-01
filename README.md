@@ -10,6 +10,7 @@
 
 - Python 3.8+
 - `pywinauto`
+- `PySide6_Essentials`
 
 安装依赖：
 
