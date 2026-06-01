@@ -17,14 +17,6 @@
 python -m pip install -r requirements.txt
 ```
 
-## 使用
-
-打开 `run.bat` 运行图形界面：
-
-```cmd
-run.bat
-```
-
 在浏览器中打开 osu 谱面链接，例如：
 
 ```text
@@ -64,10 +56,6 @@ build.bat
 - `open_with`: 自动打开方式。界面中显示为“系统默认”、“osu! stable”或“osu! lazer”。
 - `stable_path`: osu! stable 启动器路径，留空时会自动检测常见安装位置并写回配置。
 - `lazer_path`: osu! lazer 启动器路径，留空时会自动检测常见安装位置并写回配置。
-
-## 中文乱码
-
-如果在 CMD 中看到中文乱码，请使用 `run.bat` 启动。它会先执行 `chcp 65001`，并启用 Python UTF-8 模式。
 
 ## 开源协议
 
