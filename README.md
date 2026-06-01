@@ -36,13 +36,11 @@ python main.py --cli
 
 ## 打包为 exe
 
-如果要发给没有 Python 的用户，双击运行：
+双击运行：
 
 ```cmd
 build.bat
 ```
-
-打包完成后，把 `dist` 文件夹里的 `osu-sayobot-helper.exe` 和 `config.json` 一起发给别人即可。打包后的 exe 默认不显示系统 CMD 窗口。
 
 ## 配置
 
